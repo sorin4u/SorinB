@@ -12,13 +12,30 @@ app.use(express.json());
 
 // Database configuration
 const client = new Client({
-  connectionString: 'postgresql://neondb_owner:npg_ywEpB3DL4JVF@ep-aged-sunset-abc5a289-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require'
+  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_ywEpB3DL4JVF@ep-aged-sunset-abc5a289-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require',
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-// Connect to database
-client.connect()
-  .then(() => console.log('✅ Connected to Neon PostgreSQL database'))
-  .catch(err => console.error('❌ Connection error:', err));
+// Connect to database with error handling
+async function connectDB() {
+  try {
+    await client.connect();
+    console.log('✅ Connected to Neon PostgreSQL database');
+  } catch (err) {
+    console.error('❌ Connection error:', err);
+    // Retry connection after 5 seconds
+    setTimeout(connectDB, 5000);
+  }
+}
+
+connectDB();
+
+// Handle connection errors
+client.on('error', (err) => {
+  console.error('Database connection error:', err);
+});
 
 // Route to get all data from users table
 app.get('/api/data', async (req, res) => {
