@@ -2,6 +2,9 @@
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const { Client } = pg;
 const app = express();
@@ -9,6 +12,11 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// Resolve __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, '..', 'dist');
 
 // Database configuration
 const client = new Client({
@@ -35,6 +43,11 @@ connectDB();
 // Handle connection errors
 client.on('error', (err) => {
   console.error('Database connection error:', err);
+});
+
+// Health check endpoint
+app.get('/healthz', (_req, res) => {
+  res.status(200).send('ok');
 });
 
 // Route to get all data from users table
@@ -70,6 +83,20 @@ app.post('/api/query', async (req, res) => {
   } catch (err) {
     console.error('Query error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Serve static frontend if built (Render/production)
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
+
+// Root route: serve index.html if present, otherwise helpful message
+app.get('/', (req, res) => {
+  if (fs.existsSync(path.join(distPath, 'index.html'))) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  } else {
+    res.type('text').send('Backend is running. Try GET /api/data');
   }
 });
 
