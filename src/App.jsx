@@ -30,6 +30,7 @@ function App() {
 
   useEffect(() => {
     // Fetch data from database on mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData()
   }, [])
 
