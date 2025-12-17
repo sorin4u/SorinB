@@ -8,7 +8,7 @@ function App() {
 
   useEffect(() => {
     // Fetch data from database
-    fetch('http://0.0.0.0:10000/api/data')
+    fetch('http://0.0.0.0:3000/api/data')
       .then(response => response.json())
       .then(data => {
         setDbData(data)
