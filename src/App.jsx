@@ -5,19 +5,32 @@ function App() {
   const [dbData, setDbData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const apiBase = import.meta.env.VITE_API_BASE_URL || ''
 
-  useEffect(() => {
-    // Fetch data from database
-    fetch('http://0.0.0.0:3000/api/data')
-      .then(response => response.json())
-      .then(data => {
+  const fetchData = () => {
+    setLoading(true)
+    setError(null)
+    fetch(`${apiBase}/api/data`)
+      .then(async (response) => {
+        if (!response.ok) {
+          const text = await response.text().catch(() => '')
+          throw new Error(`HTTP ${response.status} ${response.statusText} ${text}`)
+        }
+        return response.json()
+      })
+      .then((data) => {
         setDbData(data)
         setLoading(false)
       })
-      .catch(err => {
+      .catch((err) => {
         setError(err.message)
         setLoading(false)
       })
+  }
+
+  useEffect(() => {
+    // Fetch data from database on mount
+    fetchData()
   }, [])
 
   return (
@@ -27,6 +40,8 @@ function App() {
       </div>
       
       <div className="card">
+        <p style={{fontSize: 12, color: '#777'}}>API base: {apiBase || '(same-origin)'}</p>
+        <button onClick={fetchData} style={{marginBottom: 12}}>Retry Fetch</button>
         {loading && <p>Loading all data from database...</p>}
         
         {error && <p style={{color: 'red'}}>Error: {error}</p>}
