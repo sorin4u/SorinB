@@ -8,8 +8,15 @@ function App() {
 
   useEffect(() => {
     // Fetch data from database
-    fetch('http://localhost:3000/api/data')
-      .then(response => response.json())
+    const base = import.meta.env.VITE_API_BASE_URL || '' // use same-origin by default
+    fetch(`${base}/api/data`)
+      .then(async response => {
+        if (!response.ok) {
+          const text = await response.text().catch(() => '')
+          throw new Error(`HTTP ${response.status} ${response.statusText} ${text}`)
+        }
+        return response.json()
+      })
       .then(data => {
         setDbData(data)
         setLoading(false)
