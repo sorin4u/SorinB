@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
 function App() {
@@ -7,7 +7,7 @@ function App() {
   const [error, setError] = useState(null)
   const apiBase = import.meta.env.VITE_API_BASE_URL || ''
 
-  const fetchData = () => {
+  const fetchData = useCallback(() => {
     setLoading(true)
     setError(null)
     fetch(`${apiBase}/api/data`)
@@ -26,13 +26,13 @@ function App() {
         setError(err.message)
         setLoading(false)
       })
-  }
+  }, [apiBase])
 
   useEffect(() => {
     // Fetch data from database on mount
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData()
-  }, [])
+  }, [fetchData])
 
   return (
     <>
