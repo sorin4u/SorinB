@@ -19,6 +19,7 @@ app.use(
 );
 app.options('*', cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 // Allow browser geolocation APIs (important when the app is embedded in an iframe).
 // Note: the embedding page must also include `allow="geolocation"` on the iframe.
@@ -164,6 +165,59 @@ app.get('/api/locations', async (req, res) => {
     console.error('Error fetching locations:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Simple endpoint for GPS receivers (Cordova, embedded apps, etc.)
+// DEFAULT_SERVER_ENDPOINT = 'https://sorinb.onrender.com/gps'
+app.post('/gps', async (req, res) => {
+  try {
+    await ensureSchema();
+
+    const {
+      lat,
+      lng,
+      accuracy = null,
+      altitude = null,
+      altitudeAccuracy = null,
+      heading = null,
+      speed = null,
+      timestamp = null,
+    } = req.body ?? {};
+
+    const latNum = typeof lat === 'string' ? Number.parseFloat(lat) : lat;
+    const lngNum = typeof lng === 'string' ? Number.parseFloat(lng) : lng;
+
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      return res.status(400).json({ ok: false, error: 'lat and lng are required (numbers)' });
+    }
+
+    const insert = await pool.query(
+      `
+        INSERT INTO locations (lat, lng, accuracy, altitude, altitude_accuracy, heading, speed, client_timestamp_ms)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, lat, lng, recorded_at
+      `,
+      [
+        latNum,
+        lngNum,
+        accuracy,
+        altitude,
+        altitudeAccuracy,
+        heading,
+        speed,
+        timestamp,
+      ],
+    );
+
+    res.status(201).json({ ok: true, saved: insert.rows[0] });
+  } catch (err) {
+    console.error('Error inserting /gps location:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/gps', (_req, res) => {
+  res.type('text').send('ok');
 });
 
 // Route to execute custom query
