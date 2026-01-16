@@ -16,7 +16,9 @@ function App() {
   const [dbData, setDbData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const apiBase = import.meta.env.VITE_API_BASE_URL || ''
+  const apiBase =
+    import.meta.env.VITE_API_BASE_URL ||
+    (window.location.protocol === 'file:' ? 'https://sorinb.onrender.com' : '')
 
   const [geoStatus, setGeoStatus] = useState('idle')
   const [geoError, setGeoError] = useState(null)

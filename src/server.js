@@ -10,7 +10,14 @@ const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+  }),
+);
+app.options('*', cors());
 app.use(express.json());
 
 // Allow browser geolocation APIs (important when the app is embedded in an iframe).
