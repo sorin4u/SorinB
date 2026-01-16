@@ -83,12 +83,31 @@ function App() {
     setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setPosition({
+        const nextPosition = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
+          altitude: pos.coords.altitude,
           accuracy: pos.coords.accuracy,
-        })
+          altitudeAccuracy: pos.coords.altitudeAccuracy,
+          heading: pos.coords.heading,
+          speed: pos.coords.speed,
+          timestamp: pos.timestamp,
+        }
+
+        setPosition(nextPosition)
         setGeoStatus('ready')
+
+        const show = (value) => (value === null || value === undefined ? 'N/A' : value)
+        window.alert(
+          'Latitude: ' + show(nextPosition.lat) + '\n' +
+            'Longitude: ' + show(nextPosition.lng) + '\n' +
+            'Altitude: ' + show(nextPosition.altitude) + '\n' +
+            'Accuracy: ' + show(nextPosition.accuracy) + '\n' +
+            'Altitude Accuracy: ' + show(nextPosition.altitudeAccuracy) + '\n' +
+            'Heading: ' + show(nextPosition.heading) + '\n' +
+            'Speed: ' + show(nextPosition.speed) + '\n' +
+            'Timestamp: ' + show(nextPosition.timestamp) + '\n',
+        )
       },
       (err) => {
         let message = err?.message || 'Unable to get your location.'

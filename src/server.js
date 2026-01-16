@@ -36,9 +36,29 @@ const pool = new Pool({
   keepAlive: true,
 });
 
+async function ensureSchema() {
+  // Stores browser geolocation readings (useful for the map feature)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS locations (
+      id BIGSERIAL PRIMARY KEY,
+      lat DOUBLE PRECISION NOT NULL,
+      lng DOUBLE PRECISION NOT NULL,
+      accuracy REAL,
+      altitude DOUBLE PRECISION,
+      altitude_accuracy REAL,
+      heading REAL,
+      speed REAL,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query('CREATE INDEX IF NOT EXISTS locations_recorded_at_idx ON locations (recorded_at DESC)');
+}
+
 // Initial sanity check (non-fatal)
 pool.query('SELECT 1').then(() => {
   console.log('✅ DB pool ready');
+  return ensureSchema();
 }).catch((err) => {
   console.warn('⚠️ DB initial check failed (will retry on requests):', err.message);
 });
@@ -61,6 +81,7 @@ app.get('/healthz/db', async (_req, res) => {
 // Route to get all data from users table
 app.get('/api/data', async (req, res) => {
   try {
+    await ensureSchema();
     // Get all tables
     const tablesResult = await pool.query(`
       SELECT table_name 
@@ -78,6 +99,57 @@ app.get('/api/data', async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching data:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save a geolocation reading
+app.post('/api/locations', async (req, res) => {
+  try {
+    await ensureSchema();
+
+    const {
+      lat,
+      lng,
+      accuracy = null,
+      altitude = null,
+      altitudeAccuracy = null,
+      heading = null,
+      speed = null,
+    } = req.body ?? {};
+
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ error: 'lat and lng must be numbers' });
+    }
+
+    const insert = await pool.query(
+      `
+        INSERT INTO locations (lat, lng, accuracy, altitude, altitude_accuracy, heading, speed)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `,
+      [lat, lng, accuracy, altitude, altitudeAccuracy, heading, speed],
+    );
+
+    res.status(201).json(insert.rows[0]);
+  } catch (err) {
+    console.error('Error inserting location:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List recent geolocation readings
+app.get('/api/locations', async (req, res) => {
+  try {
+    await ensureSchema();
+    const limit = Math.min(Number.parseInt(req.query.limit, 10) || 50, 200);
+    const result = await pool.query(
+      'SELECT * FROM locations ORDER BY recorded_at DESC LIMIT $1',
+      [limit],
+    );
+    res.json({ count: result.rows.length, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching locations:', err);
     res.status(500).json({ error: err.message });
   }
 });
