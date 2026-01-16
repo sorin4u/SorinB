@@ -13,6 +13,13 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Allow browser geolocation APIs (important when the app is embedded in an iframe).
+// Note: the embedding page must also include `allow="geolocation"` on the iframe.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'geolocation=(self)');
+  next();
+});
+
 // Resolve __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -61,7 +61,14 @@ function App() {
     // Most browsers require a secure context for geolocation (HTTPS or localhost).
     if (!window.isSecureContext && window.location.hostname !== 'localhost') {
       setGeoStatus('error')
-      const message = `Geolocation is blocked because this page is not secure.\n\nOpen this app on HTTPS (or use http://localhost).\nCurrent: ${window.location.protocol}//${window.location.host}`
+      const isInIframe = window.top !== window
+      const message =
+        `Geolocation is blocked because this page is not in a secure context.\n\n` +
+        `Fix: open the app on HTTPS (or use http://localhost).` +
+        (isInIframe
+          ? `\n\nIf this app is inside an iframe, the page that contains the iframe must ALSO be HTTPS.`
+          : '') +
+        `\n\nCurrent frame: ${window.location.protocol}//${window.location.host}`
       setGeoError(message)
       window.alert(message)
       return
