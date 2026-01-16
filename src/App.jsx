@@ -118,7 +118,7 @@ function App() {
 
         // Save to DB
         setSaveStatus('saving')
-        fetch(`${apiBase}/api/locations`, {
+        fetch(`${apiBase}/gps`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

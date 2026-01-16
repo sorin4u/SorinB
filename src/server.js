@@ -220,6 +220,50 @@ app.get('/gps', (_req, res) => {
   res.type('text').send('ok');
 });
 
+// Also allow sending GPS via query string (some clients use GET requests)
+// Example: /gps?lat=44.4&lng=26.1&accuracy=10
+app.get('/gps', async (req, res, next) => {
+  // If no coordinates are provided, keep the simple health response above.
+  if (req.query?.lat === undefined && req.query?.lng === undefined) return next();
+
+  try {
+    await ensureSchema();
+
+    const latNum = Number.parseFloat(String(req.query.lat));
+    const lngNum = Number.parseFloat(String(req.query.lng));
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      return res.status(400).json({ ok: false, error: 'lat and lng are required (numbers)' });
+    }
+
+    const accuracy = req.query.accuracy !== undefined ? Number.parseFloat(String(req.query.accuracy)) : null;
+    const altitude = req.query.altitude !== undefined ? Number.parseFloat(String(req.query.altitude)) : null;
+    const altitudeAccuracy =
+      req.query.altitudeAccuracy !== undefined
+        ? Number.parseFloat(String(req.query.altitudeAccuracy))
+        : req.query.altitude_accuracy !== undefined
+          ? Number.parseFloat(String(req.query.altitude_accuracy))
+          : null;
+    const heading = req.query.heading !== undefined ? Number.parseFloat(String(req.query.heading)) : null;
+    const speed = req.query.speed !== undefined ? Number.parseFloat(String(req.query.speed)) : null;
+    const timestamp =
+      req.query.timestamp !== undefined ? Number.parseInt(String(req.query.timestamp), 10) : null;
+
+    const insert = await pool.query(
+      `
+        INSERT INTO locations (lat, lng, accuracy, altitude, altitude_accuracy, heading, speed, client_timestamp_ms)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, lat, lng, recorded_at
+      `,
+      [latNum, lngNum, Number.isFinite(accuracy) ? accuracy : null, Number.isFinite(altitude) ? altitude : null, Number.isFinite(altitudeAccuracy) ? altitudeAccuracy : null, Number.isFinite(heading) ? heading : null, Number.isFinite(speed) ? speed : null, Number.isFinite(timestamp) ? timestamp : null],
+    );
+
+    res.status(201).json({ ok: true, saved: insert.rows[0] });
+  } catch (err) {
+    console.error('Error inserting /gps (GET) location:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Route to execute custom query
 app.post('/api/query', async (req, res) => {
   try {
