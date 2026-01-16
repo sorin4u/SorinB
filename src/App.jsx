@@ -58,6 +58,15 @@ function App() {
       return
     }
 
+    // Most browsers require a secure context for geolocation (HTTPS or localhost).
+    if (!window.isSecureContext && window.location.hostname !== 'localhost') {
+      setGeoStatus('error')
+      setGeoError(
+        `Geolocation is blocked because this page is not secure. Open this app on HTTPS (or use http://localhost). Current: ${window.location.protocol}//${window.location.host}`,
+      )
+      return
+    }
+
     setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -70,7 +79,9 @@ function App() {
       },
       (err) => {
         let message = err?.message || 'Unable to get your location.'
-        if (err?.code === 1) message = 'Permission denied. Allow location access and try again.'
+        if (err?.code === 1)
+          message =
+            'Permission denied. Fix: click the lock icon in the address bar → Site settings → Location → Allow. Then reload and try again.'
         if (err?.code === 2) message = 'Position unavailable. Try again or check your device settings.'
         if (err?.code === 3) message = 'Location request timed out. Try again.'
         setGeoError(message)
