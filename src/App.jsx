@@ -61,9 +61,15 @@ function App() {
     // Most browsers require a secure context for geolocation (HTTPS or localhost).
     if (!window.isSecureContext && window.location.hostname !== 'localhost') {
       setGeoStatus('error')
-      setGeoError(
-        `Geolocation is blocked because this page is not secure. Open this app on HTTPS (or use http://localhost). Current: ${window.location.protocol}//${window.location.host}`,
-      )
+      const message = `Geolocation is blocked because this page is not secure.\n\nOpen this app on HTTPS (or use http://localhost).\nCurrent: ${window.location.protocol}//${window.location.host}`
+      setGeoError(message)
+      window.alert(message)
+      return
+    }
+
+    const ok = window.confirm('Allow this app to use your current location?')
+    if (!ok) {
+      setGeoStatus('idle')
       return
     }
 
@@ -86,6 +92,10 @@ function App() {
         if (err?.code === 3) message = 'Location request timed out. Try again.'
         setGeoError(message)
         setGeoStatus('error')
+
+        if (err?.code === 1) {
+          window.alert(message)
+        }
       },
       {
         enableHighAccuracy: true,
