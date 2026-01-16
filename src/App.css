@@ -133,6 +133,13 @@
   background: color-mix(in oklab, var(--surface) 55%, transparent);
 }
 
+.mapWrap {
+  height: clamp(260px, 40vh, 420px);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
 @media (max-width: 640px) {
   .pageHeader {
     flex-direction: column;
@@ -146,6 +153,10 @@
   .dataTable {
     min-width: 560px;
     font-size: 13px;
+  }
+
+  .mapWrap {
+    height: 320px;
   }
 }
 
