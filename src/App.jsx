@@ -34,76 +34,64 @@ function App() {
     fetchData()
   }, [fetchData])
 
+  const rows = Array.isArray(dbData?.data) ? dbData.data : []
+  const columns = rows.length > 0 && rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []
+
   return (
-    <>
-      <div>
-        <h1>📊 All Database Data</h1>
-      </div>
-      
-      <div className="card">
-        <p style={{fontSize: 12, color: '#777'}}>API base: {apiBase || '(same-origin)'}</p>
-        <button onClick={fetchData} style={{marginBottom: 12}}>Retry Fetch</button>
-        {loading && <p>Loading all data from database...</p>}
-        
-        {error && <p style={{color: 'red'}}>Error: {error}</p>}
-        
+    <main className="page">
+      <header className="pageHeader">
+        <div className="titleBlock">
+          <h1>All Database Data</h1>
+          <p className="subtitle">API base: {apiBase || '(same-origin)'}</p>
+        </div>
+
+        <div className="actions">
+          <button className="btn" onClick={fetchData}>
+            Refresh
+          </button>
+        </div>
+      </header>
+
+      <section className="card">
+        {loading && <p className="status">Loading all data from database…</p>}
+        {error && <p className="status error">Error: {error}</p>}
+
         {dbData && (
-          <div>
-            {/* <h2>✅ Connected to Neon PostgreSQL</h2>
-            
-           <h3>All Tables ({dbData.tables ? dbData.tables.length : 0}):</h3> */}
-            {/* <ul>
-              {dbData.tables && dbData.tables.map((table, index) => (
-                <li key={index}>{table.table_name}</li>
-              ))}
-            </ul> */}
-            
-            <h3>All Data from Database:</h3>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              margin: '20px 0',
-              fontSize: '16px',
-              textAlign: 'left'
-            }}>
-              {/* <thead>
-                <tr style={{
-                  backgroundColor: '#646cff',
-                  color: 'white',
-                  borderBottom: '2px solid #ddd'
-                }}>
-                  {dbData.data && dbData.data.length > 0 && 
-                    Object.keys(dbData.data[0]).map((key, index) => (
-                      <th key={index} style={{padding: '12px', border: '1px solid #ddd'}}>
-                        {key}
-                      </th>
-                    ))
-                  }
-                </tr>
-              </thead> */}
-              <tbody>
-                {dbData.data && dbData.data.map((row, rowIndex) => (
-                  <tr key={rowIndex} style={{
-                    backgroundColor: rowIndex % 2 === 0 ? '#f9f9f9' : 'white',
-                    borderBottom: '1px solid #ddd'
-                  }}>
-                    {Object.values(row).map((value, colIndex) => (
-                      <td key={colIndex} style={{padding: '12px', border: '1px solid #ddd'}}>
-                        {value}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            <p style={{marginTop: '20px', fontSize: '14px', color: '#888'}}>
-              Total rows: {dbData.data ? dbData.data.length : 0}
-            </p>
-          </div>
+          <>
+            <div className="sectionHeader">
+              <h2>Data</h2>
+              <p className="muted">Total rows: {rows.length}</p>
+            </div>
+
+            <div className="tableWrap" role="region" aria-label="Database table" tabIndex={0}>
+              <table className="dataTable">
+                {columns.length > 0 && (
+                  <thead>
+                    <tr>
+                      {columns.map((key) => (
+                        <th key={key} scope="col">
+                          {key}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                )}
+
+                <tbody>
+                  {rows.map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {(columns.length ? columns : Object.keys(row)).map((colKey) => (
+                        <td key={colKey}>{row?.[colKey]}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
-      </div>
-    </>
+      </section>
+    </main>
   )
 }
 

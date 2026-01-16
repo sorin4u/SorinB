@@ -1,44 +1,152 @@
 #root {
-  max-width: 1280px;
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  padding: clamp(16px, 2vw, 28px);
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.titleBlock {
+  display: grid;
+  gap: 6px;
+  text-align: left;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.btn:hover {
+  border-color: color-mix(in oklab, var(--brand) 55%, var(--border));
+  background: color-mix(in oklab, var(--surface-2) 70%, transparent);
+}
+
+.btn:active {
+  transform: translateY(1px);
 }
 
 .card {
-  padding: 2em;
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: clamp(14px, 2vw, 20px);
 }
 
-.read-the-docs {
-  color: #888;
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status {
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--surface-2) 70%, transparent);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.status.error {
+  border-color: color-mix(in oklab, #ff4d4d 45%, var(--border));
+  background: color-mix(in oklab, #ff4d4d 10%, var(--surface-2));
+}
+
+.tableWrap {
+  width: 100%;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-2) 65%, transparent);
+}
+
+.dataTable {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 14px;
+}
+
+.dataTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 12px;
+  white-space: nowrap;
+}
+
+.dataTable tbody td {
+  padding: 12px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: top;
+}
+
+.dataTable tbody tr:nth-child(even) td {
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+}
+
+@media (max-width: 640px) {
+  .pageHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+
+  .dataTable {
+    min-width: 560px;
+    font-size: 13px;
+  }
 }
 
 
