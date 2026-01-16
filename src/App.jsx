@@ -21,6 +21,8 @@ function App() {
   const [geoStatus, setGeoStatus] = useState('idle')
   const [geoError, setGeoError] = useState(null)
   const [position, setPosition] = useState(null)
+  const [saveStatus, setSaveStatus] = useState('idle')
+  const [saveError, setSaveError] = useState(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -83,6 +85,9 @@ function App() {
     setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        setSaveStatus('idle')
+        setSaveError(null)
+
         const nextPosition = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
@@ -108,6 +113,37 @@ function App() {
             'Speed: ' + show(nextPosition.speed) + '\n' +
             'Timestamp: ' + show(nextPosition.timestamp) + '\n',
         )
+
+        // Save to DB
+        setSaveStatus('saving')
+        fetch(`${apiBase}/api/locations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: nextPosition.lat,
+            lng: nextPosition.lng,
+            altitude: nextPosition.altitude,
+            accuracy: nextPosition.accuracy,
+            altitudeAccuracy: nextPosition.altitudeAccuracy,
+            heading: nextPosition.heading,
+            speed: nextPosition.speed,
+            timestamp: nextPosition.timestamp,
+          }),
+        })
+          .then(async (r) => {
+            if (!r.ok) {
+              const text = await r.text().catch(() => '')
+              throw new Error(`Save failed: HTTP ${r.status} ${r.statusText} ${text}`)
+            }
+            return r.json()
+          })
+          .then(() => {
+            setSaveStatus('saved')
+          })
+          .catch((e) => {
+            setSaveStatus('error')
+            setSaveError(e.message)
+          })
       },
       (err) => {
         let message = err?.message || 'Unable to get your location.'
@@ -129,7 +165,7 @@ function App() {
         maximumAge: 15000,
       },
     )
-  }, [])
+  }, [apiBase])
 
   const mapCenter = useMemo(() => {
     if (position) return [position.lat, position.lng]
@@ -166,6 +202,11 @@ function App() {
         </div>
 
         {geoError && <p className="status error">{geoError}</p>}
+
+        {saveError && <p className="status error">{saveError}</p>}
+
+        {saveStatus === 'saving' && <p className="status">Saving location to database…</p>}
+        {saveStatus === 'saved' && <p className="status">Saved location to database ✅</p>}
 
         {position && (
           <p className="muted" style={{ marginBottom: 10 }}>

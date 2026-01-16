@@ -48,9 +48,13 @@ async function ensureSchema() {
       altitude_accuracy REAL,
       heading REAL,
       speed REAL,
+      client_timestamp_ms BIGINT,
       recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  // Backfill schema if table already existed
+  await pool.query('ALTER TABLE locations ADD COLUMN IF NOT EXISTS client_timestamp_ms BIGINT');
 
   await pool.query('CREATE INDEX IF NOT EXISTS locations_recorded_at_idx ON locations (recorded_at DESC)');
 }
@@ -116,6 +120,7 @@ app.post('/api/locations', async (req, res) => {
       altitudeAccuracy = null,
       heading = null,
       speed = null,
+      timestamp = null,
     } = req.body ?? {};
 
     if (typeof lat !== 'number' || typeof lng !== 'number') {
@@ -124,11 +129,11 @@ app.post('/api/locations', async (req, res) => {
 
     const insert = await pool.query(
       `
-        INSERT INTO locations (lat, lng, accuracy, altitude, altitude_accuracy, heading, speed)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO locations (lat, lng, accuracy, altitude, altitude_accuracy, heading, speed, client_timestamp_ms)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
       `,
-      [lat, lng, accuracy, altitude, altitudeAccuracy, heading, speed],
+      [lat, lng, accuracy, altitude, altitudeAccuracy, heading, speed, timestamp],
     );
 
     res.status(201).json(insert.rows[0]);
