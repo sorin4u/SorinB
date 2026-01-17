@@ -27,9 +27,6 @@ function App() {
   const [tracking, setTracking] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState(null)
   const trackTimerRef = useRef(null)
-  const watchIdRef = useRef(null)
-  const latestPositionRef = useRef(null)
-  const wakeLockRef = useRef(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -63,14 +60,6 @@ function App() {
       window.clearInterval(trackTimerRef.current)
       trackTimerRef.current = null
     }
-    if (watchIdRef.current !== null) {
-      navigator.geolocation?.clearWatch?.(watchIdRef.current)
-      watchIdRef.current = null
-    }
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release?.().catch(() => {})
-      wakeLockRef.current = null
-    }
     setTracking(false)
     setGeoStatus('idle')
   }, [])
@@ -81,61 +70,16 @@ function App() {
         window.clearInterval(trackTimerRef.current)
         trackTimerRef.current = null
       }
-      if (watchIdRef.current !== null) {
-        navigator.geolocation?.clearWatch?.(watchIdRef.current)
-        watchIdRef.current = null
-      }
-      if (wakeLockRef.current) {
-        wakeLockRef.current.release?.().catch(() => {})
-        wakeLockRef.current = null
-      }
     }
   }, [])
 
-  const saveLocationToDb = useCallback(
-    (nextPosition) => {
-      // Save to DB
-      setSaveStatus('saving')
-      fetch(`${apiBase}/api/locations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lat: nextPosition.lat,
-          lng: nextPosition.lng,
-          altitude: nextPosition.altitude,
-          accuracy: nextPosition.accuracy,
-          altitudeAccuracy: nextPosition.altitudeAccuracy,
-          heading: nextPosition.heading,
-          speed: nextPosition.speed,
-          timestamp: nextPosition.timestamp,
-        }),
-      })
-        .then(async (r) => {
-          if (!r.ok) {
-            const text = await r.text().catch(() => '')
-            throw new Error(`Save failed: HTTP ${r.status} ${r.statusText} ${text}`)
-          }
-          return r.json()
-        })
-        .then(() => {
-          setSaveStatus('saved')
-          setLastSavedAt(new Date())
-        })
-        .catch((e) => {
-          setSaveStatus('error')
-          setSaveError(e.message)
-        })
-    },
-    [apiBase],
-  )
-
-  const ensureGeolocationAvailable = useCallback(() => {
+  const captureAndSaveLocation = useCallback(() => {
     setGeoError(null)
 
     if (!('geolocation' in navigator)) {
       setGeoStatus('error')
       setGeoError('Geolocation is not supported in this browser.')
-      return false
+      return
     }
 
     // Most browsers require a secure context for geolocation (HTTPS or localhost).
@@ -151,14 +95,8 @@ function App() {
         `\n\nCurrent frame: ${window.location.protocol}//${window.location.host}`
       setGeoError(message)
       window.alert(message)
-      return false
+      return
     }
-
-    return true
-  }, [])
-
-  const captureOnce = useCallback(() => {
-    if (!ensureGeolocationAvailable()) return
 
     setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
@@ -178,69 +116,39 @@ function App() {
         }
 
         setPosition(nextPosition)
-        latestPositionRef.current = nextPosition
         setGeoStatus('ready')
 
-        saveLocationToDb(nextPosition)
-      },
-      (err) => {
-        let message = err?.message || 'Unable to get your location.'
-        if (err?.code === 1)
-          message =
-            'Permission denied. Fix: click the lock icon in the address bar → Site settings → Location → Allow. Then reload and try again.'
-        if (err?.code === 2) message = 'Position unavailable. Try again or check your device settings.'
-        if (err?.code === 3) message = 'Location request timed out. Try again.'
-        setGeoError(message)
-        setGeoStatus('error')
-
-        if (err?.code === 1) {
-          window.alert(message)
-          stopTracking()
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 15000,
-      },
-    )
-  }, [ensureGeolocationAvailable, saveLocationToDb, stopTracking])
-
-  const startWatch = useCallback(() => {
-    if (!ensureGeolocationAvailable()) return
-
-    // Best-effort: keep screen awake while tracking
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock
-        .request('screen')
-        .then((lock) => {
-          wakeLockRef.current = lock
+        // Save to DB
+        setSaveStatus('saving')
+        fetch(`${apiBase}/api/locations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: nextPosition.lat,
+            lng: nextPosition.lng,
+            altitude: nextPosition.altitude,
+            accuracy: nextPosition.accuracy,
+            altitudeAccuracy: nextPosition.altitudeAccuracy,
+            heading: nextPosition.heading,
+            speed: nextPosition.speed,
+            timestamp: nextPosition.timestamp,
+          }),
         })
-        .catch(() => {})
-    }
-
-    setGeoStatus('loading')
-
-    if (watchIdRef.current !== null) {
-      navigator.geolocation?.clearWatch?.(watchIdRef.current)
-      watchIdRef.current = null
-    }
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const nextPosition = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          altitude: pos.coords.altitude,
-          accuracy: pos.coords.accuracy,
-          altitudeAccuracy: pos.coords.altitudeAccuracy,
-          heading: pos.coords.heading,
-          speed: pos.coords.speed,
-          timestamp: pos.timestamp,
-        }
-        latestPositionRef.current = nextPosition
-        setPosition(nextPosition)
-        setGeoStatus('ready')
+          .then(async (r) => {
+            if (!r.ok) {
+              const text = await r.text().catch(() => '')
+              throw new Error(`Save failed: HTTP ${r.status} ${r.statusText} ${text}`)
+            }
+            return r.json()
+          })
+          .then(() => {
+            setSaveStatus('saved')
+            setLastSavedAt(new Date())
+          })
+          .catch((e) => {
+            setSaveStatus('error')
+            setSaveError(e.message)
+          })
       },
       (err) => {
         let message = err?.message || 'Unable to get your location.'
@@ -251,6 +159,7 @@ function App() {
         if (err?.code === 3) message = 'Location request timed out. Try again.'
         setGeoError(message)
         setGeoStatus('error')
+
         if (err?.code === 1) {
           window.alert(message)
           stopTracking()
@@ -262,7 +171,7 @@ function App() {
         maximumAge: 15000,
       },
     )
-  }, [ensureGeolocationAvailable, stopTracking])
+  }, [apiBase, stopTracking])
 
   const toggleTracking = useCallback(() => {
     if (tracking) {
@@ -274,37 +183,11 @@ function App() {
     if (!ok) return
 
     setTracking(true)
-    startWatch()
-    captureOnce() // save immediately on start
+    captureAndSaveLocation() // run immediately
     trackTimerRef.current = window.setInterval(() => {
-      const latest = latestPositionRef.current
-      if (latest) {
-        saveLocationToDb(latest)
-      } else {
-        captureOnce()
-      }
+      captureAndSaveLocation()
     }, 60_000)
-  }, [tracking, stopTracking, startWatch, captureOnce, saveLocationToDb])
-
-  // If the page becomes visible again, re-request wake lock (best-effort)
-  useEffect(() => {
-    if (!tracking) return
-
-    const onVisibility = () => {
-      if (!tracking) return
-      if (document.visibilityState === 'visible' && 'wakeLock' in navigator) {
-        navigator.wakeLock
-          .request('screen')
-          .then((lock) => {
-            wakeLockRef.current = lock
-          })
-          .catch(() => {})
-      }
-    }
-
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [tracking])
+  }, [tracking, captureAndSaveLocation, stopTracking])
 
   const mapCenter = useMemo(() => {
     if (position) return [position.lat, position.lng]
@@ -350,7 +233,7 @@ function App() {
 
         {saveStatus === 'saving' && <p className="status">Saving location to database…</p>}
         {saveStatus === 'saved' && <p className="status">Saved location to database ✅</p>}
-        {tracking && <p className="status">Tracking is ON (saves every 1 minute, best-effort in background)</p>}
+        {tracking && <p className="status">Tracking is ON (saves every 1 minute)</p>}
         {!tracking && lastSavedAt && <p className="muted">Last saved: {lastSavedAt.toLocaleString()}</p>}
 
         {position && (
