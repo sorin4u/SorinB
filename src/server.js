@@ -127,6 +127,7 @@ async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS locations (
       id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT,
       lat DOUBLE PRECISION NOT NULL,
       lng DOUBLE PRECISION NOT NULL,
       accuracy REAL,
@@ -142,6 +143,24 @@ async function ensureSchema() {
   // Backfill schema if table already existed (safe no-op when already present)
   await pool.query('ALTER TABLE locations ADD COLUMN IF NOT EXISTS client_timestamp_ms BIGINT');
   await pool.query('ALTER TABLE locations ADD COLUMN IF NOT EXISTS user_id BIGINT');
+
+  // Add FK constraint if it doesn't exist yet (Postgres has no IF NOT EXISTS for constraints).
+  // Keeps user_id nullable so older rows and /gps rows (anonymous) still work.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'locations_user_id_fkey'
+      ) THEN
+        ALTER TABLE locations
+        ADD CONSTRAINT locations_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
 
   await pool.query('CREATE INDEX IF NOT EXISTS locations_recorded_at_idx ON locations (recorded_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS locations_user_id_recorded_at_idx ON locations (user_id, recorded_at DESC)');
@@ -332,6 +351,29 @@ app.get('/api/locations', requireAuth, async (req, res) => {
     res.json({ count: result.rows.length, data: result.rows });
   } catch (err) {
     console.error('Error fetching locations:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: view recent locations with the sending user's email
+app.get('/api/admin/locations', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    await ensureSchema();
+    const limit = Math.min(Number.parseInt(req.query.limit, 10) || 100, 500);
+    const result = await pool.query(
+      `
+        SELECT
+          l.*, u.email AS user_email, u.role AS user_role
+        FROM locations l
+        LEFT JOIN users u ON u.id = l.user_id
+        ORDER BY l.recorded_at DESC
+        LIMIT $1
+      `,
+      [limit],
+    );
+    res.json({ count: result.rows.length, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching admin locations:', err);
     res.status(500).json({ error: err.message });
   }
 });
