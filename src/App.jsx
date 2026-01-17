@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import './App.css'
 
+// Fix default marker icons under Vite/ESM
+delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  iconRetinaUrl: new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).toString(),
+  iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).toString(),
+  shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).toString(),
 })
 
 function App() {
@@ -118,7 +117,7 @@ function App() {
 
         // Save to DB
         setSaveStatus('saving')
-        fetch(`${apiBase}/gps`, {
+        fetch(`${apiBase}/api/locations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

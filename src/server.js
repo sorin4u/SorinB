@@ -17,7 +17,9 @@ app.use(
     allowedHeaders: ['Content-Type'],
   }),
 );
-app.options('*', cors());
+// Express 5 no longer accepts "*" as a route pattern (path-to-regexp error).
+// Use a regex to handle preflight requests for any path.
+app.options(/.*/, cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
