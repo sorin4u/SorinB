@@ -18,6 +18,7 @@ function App() {
   const [authMode, setAuthMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [authToken, setAuthToken] = useState(() => window.localStorage.getItem('sorinb_token') || '')
 
   const [dbData, setDbData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -35,11 +36,18 @@ function App() {
   const [lastSavedAt, setLastSavedAt] = useState(null)
   const trackTimerRef = useRef(null)
 
+  const getAuthHeaders = useCallback(() => {
+    return authToken ? { Authorization: `Bearer ${authToken}` } : {}
+  }, [authToken])
+
   const fetchMe = useCallback(() => {
     setAuthLoading(true)
     setAuthError(null)
     fetch(`${apiBase}/api/auth/me`, {
       credentials: 'include',
+      headers: {
+        ...getAuthHeaders(),
+      },
     })
       .then(async (r) => {
         if (r.status === 401) return null
@@ -58,19 +66,24 @@ function App() {
         setAuthUser(null)
         setAuthLoading(false)
       })
-  }, [apiBase])
+  }, [apiBase, getAuthHeaders])
 
   const logout = useCallback(() => {
     fetch(`${apiBase}/api/auth/logout`, {
       method: 'POST',
       credentials: 'include',
+      headers: {
+        ...getAuthHeaders(),
+      },
     })
       .catch(() => {})
       .finally(() => {
         setAuthUser(null)
         setDbData(null)
+        setAuthToken('')
+        window.localStorage.removeItem('sorinb_token')
       })
-  }, [apiBase])
+  }, [apiBase, getAuthHeaders])
 
   const submitAuth = useCallback(
     (e) => {
@@ -91,6 +104,11 @@ function App() {
         })
         .then((data) => {
           setAuthUser(data?.user || null)
+          const token = typeof data?.token === 'string' ? data.token : ''
+          if (token) {
+            setAuthToken(token)
+            window.localStorage.setItem('sorinb_token', token)
+          }
           setPassword('')
         })
         .catch((err) => setAuthError(err.message))
@@ -101,7 +119,12 @@ function App() {
   const fetchData = useCallback(() => {
     setLoading(true)
     setError(null)
-    fetch(`${apiBase}/api/data`)
+    fetch(`${apiBase}/api/data`, {
+      credentials: 'include',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    })
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
           throw new Error('Not authorized (admin only).')
@@ -120,7 +143,7 @@ function App() {
         setError(err.message)
         setLoading(false)
       })
-  }, [apiBase])
+  }, [apiBase, getAuthHeaders])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -216,6 +239,16 @@ function App() {
             speed: nextPosition.speed,
             timestamp: nextPosition.timestamp,
           }),
+          // Also send Bearer token for setups where cookies are blocked
+          // (e.g., cross-domain or strict mobile cookie settings).
+          ...(authToken
+            ? {
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${authToken}`,
+                },
+              }
+            : {}),
         })
           .then(async (r) => {
             if (r.status === 401) {
@@ -257,7 +290,7 @@ function App() {
         maximumAge: 15000,
       },
     )
-  }, [apiBase, stopTracking])
+  }, [apiBase, authToken, stopTracking])
 
   const toggleTracking = useCallback(() => {
     if (tracking) {

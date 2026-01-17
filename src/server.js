@@ -53,6 +53,11 @@ function clearAuthCookie(res) {
 }
 
 function getTokenFromReq(req) {
+  const authHeader = req?.headers?.authorization || '';
+  if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.slice('bearer '.length).trim();
+    if (token) return token;
+  }
   return req?.cookies?.[COOKIE_NAME] || null;
 }
 
@@ -196,7 +201,7 @@ app.post('/api/auth/register', async (req, res) => {
     const user = created.rows[0];
     const token = jwt.sign({ sub: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     setAuthCookie(res, token);
-    return res.status(201).json({ user });
+    return res.status(201).json({ user, token });
   } catch (err) {
     console.error('Register error:', err);
     return res.status(500).json({ error: 'Registration failed' });
@@ -223,7 +228,7 @@ app.post('/api/auth/login', async (req, res) => {
     const user = { id: row.id, email: row.email, role: row.role };
     const token = jwt.sign({ sub: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     setAuthCookie(res, token);
-    return res.json({ user });
+    return res.json({ user, token });
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ error: 'Login failed' });
