@@ -2,6 +2,9 @@
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
+import cookieParser from 'cookie-parser';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,9 +13,20 @@ const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const COOKIE_NAME = 'sorinb_auth';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret-change-me';
+const isProd = process.env.NODE_ENV === 'production';
+
+if (isProd && JWT_SECRET === 'dev-insecure-secret-change-me') {
+  console.warn('⚠️ JWT_SECRET is not set; using an insecure default. Set JWT_SECRET in production.');
+}
+
+app.set('trust proxy', 1);
+
 app.use(
   cors({
-    origin: '*',
+    origin: true,
+    credentials: true,
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
   }),
@@ -22,6 +36,49 @@ app.use(
 app.options(/.*/, cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+
+function setAuthCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie(COOKIE_NAME, { path: '/' });
+}
+
+function getTokenFromReq(req) {
+  return req?.cookies?.[COOKIE_NAME] || null;
+}
+
+function requireAuth(req, res, next) {
+  const token = getTokenFromReq(req);
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+    };
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired session' });
+  }
+}
+
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    if (req.user.role !== role) return res.status(403).json({ error: 'Forbidden' });
+    return next();
+  };
+}
 
 // Allow browser geolocation APIs (important when the app is embedded in an iframe).
 // Note: the embedding page must also include `allow="geolocation"` on the iframe.
@@ -67,6 +124,32 @@ async function ensureSchema() {
   await pool.query('ALTER TABLE locations ADD COLUMN IF NOT EXISTS client_timestamp_ms BIGINT');
 
   await pool.query('CREATE INDEX IF NOT EXISTS locations_recorded_at_idx ON locations (recorded_at DESC)');
+
+  // Basic auth users table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Optionally bootstrap a single admin account via env vars (idempotent)
+  const adminEmail = process.env.ADMIN_EMAIL ? String(process.env.ADMIN_EMAIL).trim().toLowerCase() : '';
+  const adminPassword = process.env.ADMIN_PASSWORD ? String(process.env.ADMIN_PASSWORD) : '';
+  if (adminEmail && adminPassword) {
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [adminEmail]);
+    if (existing.rows.length === 0) {
+      const passwordHash = await bcrypt.hash(adminPassword, 12);
+      await pool.query(
+        'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3)',
+        [adminEmail, passwordHash, 'admin'],
+      );
+      console.log('✅ Bootstrapped admin user:', adminEmail);
+    }
+  }
 }
 
 // Initial sanity check (non-fatal)
@@ -92,8 +175,80 @@ app.get('/healthz/db', async (_req, res) => {
   }
 });
 
+// --- Auth routes ---
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    await ensureSchema();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email is required' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [email]);
+    if (existing.rows.length) return res.status(409).json({ error: 'Email already registered' });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const created = await pool.query(
+      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role, created_at',
+      [email, passwordHash, 'user'],
+    );
+
+    const user = created.rows[0];
+    const token = jwt.sign({ sub: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    setAuthCookie(res, token);
+    return res.status(201).json({ user });
+  } catch (err) {
+    console.error('Register error:', err);
+    return res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    await ensureSchema();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+    const found = await pool.query(
+      'SELECT id, email, role, password_hash FROM users WHERE email = $1 LIMIT 1',
+      [email],
+    );
+    if (!found.rows.length) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const row = found.rows[0];
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const user = { id: row.id, email: row.email, role: row.role };
+    const token = jwt.sign({ sub: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    setAuthCookie(res, token);
+    return res.json({ user });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    await ensureSchema();
+    const r = await pool.query('SELECT id, email, role, created_at FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
+    if (!r.rows.length) return res.status(401).json({ error: 'Not authenticated' });
+    return res.json({ user: r.rows[0] });
+  } catch (err) {
+    console.error('Me error:', err);
+    return res.status(500).json({ error: 'Failed to load session' });
+  }
+});
+
 // Route to get all data from users table
-app.get('/api/data', async (req, res) => {
+app.get('/api/data', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     await ensureSchema();
     // Get all tables
@@ -106,7 +261,7 @@ app.get('/api/data', async (req, res) => {
     console.log('Available tables:', tablesResult.rows);
     
     // Get all data from users table
-    const result = await pool.query('SELECT * FROM users');
+    const result = await pool.query('SELECT id, email, role, created_at FROM users ORDER BY created_at DESC');
     res.json({ 
       tables: tablesResult.rows,
       data: result.rows 
@@ -118,7 +273,7 @@ app.get('/api/data', async (req, res) => {
 });
 
 // Save a geolocation reading
-app.post('/api/locations', async (req, res) => {
+app.post('/api/locations', requireAuth, async (req, res) => {
   try {
     await ensureSchema();
 
@@ -154,7 +309,7 @@ app.post('/api/locations', async (req, res) => {
 });
 
 // List recent geolocation readings
-app.get('/api/locations', async (req, res) => {
+app.get('/api/locations', requireAuth, async (req, res) => {
   try {
     await ensureSchema();
     const limit = Math.min(Number.parseInt(req.query.limit, 10) || 50, 200);

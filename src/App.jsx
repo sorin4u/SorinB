@@ -12,6 +12,13 @@ L.Icon.Default.mergeOptions({
 })
 
 function App() {
+  const [authUser, setAuthUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authError, setAuthError] = useState(null)
+  const [authMode, setAuthMode] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+
   const [dbData, setDbData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -28,11 +35,77 @@ function App() {
   const [lastSavedAt, setLastSavedAt] = useState(null)
   const trackTimerRef = useRef(null)
 
+  const fetchMe = useCallback(() => {
+    setAuthLoading(true)
+    setAuthError(null)
+    fetch(`${apiBase}/api/auth/me`, {
+      credentials: 'include',
+    })
+      .then(async (r) => {
+        if (r.status === 401) return null
+        if (!r.ok) {
+          const text = await r.text().catch(() => '')
+          throw new Error(`Session check failed: HTTP ${r.status} ${r.statusText} ${text}`)
+        }
+        return r.json()
+      })
+      .then((data) => {
+        setAuthUser(data?.user || null)
+        setAuthLoading(false)
+      })
+      .catch((e) => {
+        setAuthError(e.message)
+        setAuthUser(null)
+        setAuthLoading(false)
+      })
+  }, [apiBase])
+
+  const logout = useCallback(() => {
+    fetch(`${apiBase}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+      .catch(() => {})
+      .finally(() => {
+        setAuthUser(null)
+        setDbData(null)
+      })
+  }, [apiBase])
+
+  const submitAuth = useCallback(
+    (e) => {
+      e.preventDefault()
+      setAuthError(null)
+      const url = authMode === 'register' ? '/api/auth/register' : '/api/auth/login'
+
+      fetch(`${apiBase}${url}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      })
+        .then(async (r) => {
+          const data = await r.json().catch(() => null)
+          if (!r.ok) throw new Error(data?.error || `Auth failed: HTTP ${r.status}`)
+          return data
+        })
+        .then((data) => {
+          setAuthUser(data?.user || null)
+          setPassword('')
+        })
+        .catch((err) => setAuthError(err.message))
+    },
+    [apiBase, authMode, email, password],
+  )
+
   const fetchData = useCallback(() => {
     setLoading(true)
     setError(null)
     fetch(`${apiBase}/api/data`)
       .then(async (response) => {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Not authorized (admin only).')
+        }
         if (!response.ok) {
           const text = await response.text().catch(() => '')
           throw new Error(`HTTP ${response.status} ${response.statusText} ${text}`)
@@ -50,10 +123,19 @@ function App() {
   }, [apiBase])
 
   useEffect(() => {
-    // Fetch data from database on mount
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchData()
-  }, [fetchData])
+    fetchMe()
+  }, [fetchMe])
+
+  useEffect(() => {
+    if (authUser?.role === 'admin') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchData()
+    } else {
+      setLoading(false)
+      setDbData(null)
+    }
+  }, [authUser, fetchData])
 
   const stopTracking = useCallback(() => {
     if (trackTimerRef.current) {
@@ -123,6 +205,7 @@ function App() {
         fetch(`${apiBase}/api/locations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             lat: nextPosition.lat,
             lng: nextPosition.lng,
@@ -135,6 +218,9 @@ function App() {
           }),
         })
           .then(async (r) => {
+            if (r.status === 401) {
+              throw new Error('Please login first to save locations.')
+            }
             if (!r.ok) {
               const text = await r.text().catch(() => '')
               throw new Error(`Save failed: HTTP ${r.status} ${r.statusText} ${text}`)
@@ -198,17 +284,106 @@ function App() {
   const rows = Array.isArray(dbData?.data) ? dbData.data : []
   const columns = rows.length > 0 && rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []
 
+  if (authLoading) {
+    return (
+      <main className="page">
+        <section className="card">
+          <p className="status">Checking session…</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (!authUser) {
+    return (
+      <main className="page">
+        <header className="pageHeader">
+          <div className="titleBlock">
+            <h1>SorinB</h1>
+            <p className="subtitle">Login required (user or admin)</p>
+          </div>
+        </header>
+
+        <section className="card">
+          {authError && <p className="status error">{authError}</p>}
+
+          <div className="authTabs">
+            <button
+              className="btn"
+              onClick={() => setAuthMode('login')}
+              disabled={authMode === 'login'}
+              type="button"
+            >
+              Login
+            </button>
+            <button
+              className="btn"
+              onClick={() => setAuthMode('register')}
+              disabled={authMode === 'register'}
+              type="button"
+            >
+              Register
+            </button>
+          </div>
+
+          <form className="authForm" onSubmit={submitAuth}>
+            <label className="field">
+              <span>Email</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                autoComplete="email"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Password</span>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                minLength={8}
+                required
+              />
+            </label>
+
+            <div className="actions">
+              <button className="btn" type="submit">
+                {authMode === 'register' ? 'Create account' : 'Login'}
+              </button>
+            </div>
+
+            <p className="muted" style={{ marginTop: 10 }}>
+              Admin login: set server env vars <strong>ADMIN_EMAIL</strong> and <strong>ADMIN_PASSWORD</strong> once, then login.
+            </p>
+          </form>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="page">
       <header className="pageHeader">
         <div className="titleBlock">
           <h1>All Database Data</h1>
           <p className="subtitle">API base: {apiBase || '(same-origin)'}</p>
+          <p className="subtitle">
+            Signed in as: <strong>{authUser.email}</strong> ({authUser.role})
+          </p>
         </div>
 
         <div className="actions">
-          <button className="btn" onClick={fetchData}>
-            Refresh
+          {authUser.role === 'admin' && (
+            <button className="btn" onClick={fetchData}>
+              Refresh
+            </button>
+          )}
+          <button className="btn" onClick={logout}>
+            Logout
           </button>
         </div>
       </header>
@@ -264,45 +439,47 @@ function App() {
         </p>
       </section>
 
-      <section className="card">
-        {loading && <p className="status">Loading all data from database…</p>}
-        {error && <p className="status error">Error: {error}</p>}
+      {authUser.role === 'admin' && (
+        <section className="card">
+          {loading && <p className="status">Loading all data from database…</p>}
+          {error && <p className="status error">Error: {error}</p>}
 
-        {dbData && (
-          <>
-            <div className="sectionHeader">
-              <h2>Data</h2>
-              <p className="muted">Total rows: {rows.length}</p>
-            </div>
+          {dbData && (
+            <>
+              <div className="sectionHeader">
+                <h2>Users (admin)</h2>
+                <p className="muted">Total rows: {rows.length}</p>
+              </div>
 
-            <div className="tableWrap" role="region" aria-label="Database table" tabIndex={0}>
-              <table className="dataTable">
-                {columns.length > 0 && (
-                  <thead>
-                    <tr>
-                      {columns.map((key) => (
-                        <th key={key} scope="col">
-                          {key}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                )}
+              <div className="tableWrap" role="region" aria-label="Database table" tabIndex={0}>
+                <table className="dataTable">
+                  {columns.length > 0 && (
+                    <thead>
+                      <tr>
+                        {columns.map((key) => (
+                          <th key={key} scope="col">
+                            {key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                  )}
 
-                <tbody>
-                  {rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {(columns.length ? columns : Object.keys(row)).map((colKey) => (
-                        <td key={colKey}>{row?.[colKey]}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </section>
+                  <tbody>
+                    {rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {(columns.length ? columns : Object.keys(row)).map((colKey) => (
+                          <td key={colKey}>{row?.[colKey]}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+      )}
     </main>
   )
 }

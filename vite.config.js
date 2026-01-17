@@ -36,6 +36,34 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         runtimeCaching: [
+          // Queue writes when offline and replay later (Background Sync).
+          // Note: Supported mainly on Android/Chrome when installed as a PWA.
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/locations'),
+            method: 'POST',
+            handler: 'NetworkOnly',
+            options: {
+              backgroundSync: {
+                name: 'locations-queue',
+                options: {
+                  maxRetentionTime: 24 * 60, // minutes
+                },
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/gps'),
+            method: 'POST',
+            handler: 'NetworkOnly',
+            options: {
+              backgroundSync: {
+                name: 'gps-queue',
+                options: {
+                  maxRetentionTime: 24 * 60, // minutes
+                },
+              },
+            },
+          },
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkFirst',
