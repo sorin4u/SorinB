@@ -97,7 +97,9 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        enabled: true,
+        // Dev SW can be noisy and may fail if dev output folder is missing.
+        // Keep it off by default; enable with SW_DEV=true when needed.
+        enabled: process.env.SW_DEV === 'true',
       },
     }),
   ],
