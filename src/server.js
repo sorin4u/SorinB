@@ -109,7 +109,21 @@ const pool = new Pool({
 });
 
 async function ensureSchema() {
+  // Basic auth users table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+      
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
   // Stores browser geolocation readings (useful for the map feature)
+  // NOTE: users table must exist before referencing it.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS locations (
       id BIGSERIAL PRIMARY KEY,
@@ -125,21 +139,12 @@ async function ensureSchema() {
     );
   `);
 
-  // Backfill schema if table already existed
+  // Backfill schema if table already existed (safe no-op when already present)
   await pool.query('ALTER TABLE locations ADD COLUMN IF NOT EXISTS client_timestamp_ms BIGINT');
+  await pool.query('ALTER TABLE locations ADD COLUMN IF NOT EXISTS user_id BIGINT');
 
   await pool.query('CREATE INDEX IF NOT EXISTS locations_recorded_at_idx ON locations (recorded_at DESC)');
-
-  // Basic auth users table
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id BIGSERIAL PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS locations_user_id_recorded_at_idx ON locations (user_id, recorded_at DESC)');
 
   // Optionally bootstrap a single admin account via env vars (idempotent)
   const adminEmail = process.env.ADMIN_EMAIL ? String(process.env.ADMIN_EMAIL).trim().toLowerCase() : '';
@@ -293,17 +298,19 @@ app.post('/api/locations', requireAuth, async (req, res) => {
       timestamp = null,
     } = req.body ?? {};
 
+    const userId = req.user?.id;
+
     if (typeof lat !== 'number' || typeof lng !== 'number') {
       return res.status(400).json({ error: 'lat and lng must be numbers' });
     }
 
     const insert = await pool.query(
       `
-        INSERT INTO locations (lat, lng, accuracy, altitude, altitude_accuracy, heading, speed, client_timestamp_ms)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO locations (user_id, lat, lng, accuracy, altitude, altitude_accuracy, heading, speed, client_timestamp_ms)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
       `,
-      [lat, lng, accuracy, altitude, altitudeAccuracy, heading, speed, timestamp],
+      [userId, lat, lng, accuracy, altitude, altitudeAccuracy, heading, speed, timestamp],
     );
 
     res.status(201).json(insert.rows[0]);
@@ -319,8 +326,8 @@ app.get('/api/locations', requireAuth, async (req, res) => {
     await ensureSchema();
     const limit = Math.min(Number.parseInt(req.query.limit, 10) || 50, 200);
     const result = await pool.query(
-      'SELECT * FROM locations ORDER BY recorded_at DESC LIMIT $1',
-      [limit],
+      'SELECT * FROM locations WHERE user_id = $1 ORDER BY recorded_at DESC LIMIT $2',
+      [req.user.id, limit],
     );
     res.json({ count: result.rows.length, data: result.rows });
   } catch (err) {
@@ -362,12 +369,12 @@ app.post('/gps', async (req, res) => {
       [
         latNum,
         lngNum,
-        accuracy,
-        altitude,
-        altitudeAccuracy,
-        heading,
-        speed,
-        timestamp,
+        Number.isFinite(accuracy) ? accuracy : null,
+        Number.isFinite(altitude) ? altitude : null,
+        Number.isFinite(altitudeAccuracy) ? altitudeAccuracy : null,
+        Number.isFinite(heading) ? heading : null,
+        Number.isFinite(speed) ? speed : null,
+        Number.isFinite(timestamp) ? timestamp : null,
       ],
     );
 
