@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import './App.css'
 
@@ -10,6 +10,19 @@ L.Icon.Default.mergeOptions({
   iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).toString(),
   shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).toString(),
 })
+
+function MapAutoFocus({ target, zoom }) {
+  const map = useMap()
+  const lat = target?.lat
+  const lng = target?.lng
+
+  useEffect(() => {
+    if (typeof lat !== 'number' || typeof lng !== 'number') return
+    map.setView([lat, lng], zoom, { animate: true })
+  }, [map, lat, lng, zoom])
+
+  return null
+}
 
 function App() {
   const [authUser, setAuthUser] = useState(null)
@@ -489,7 +502,8 @@ function App() {
         )}
 
         <div className="mapWrap" role="region" aria-label="Map">
-          <MapContainer center={mapCenter} zoom={position ? 15 : 11} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
+          <MapContainer center={mapCenter} zoom={position || lastDbLocation ? 15 : 11} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
+            <MapAutoFocus target={position ?? lastDbLocation} zoom={15} />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
