@@ -30,6 +30,7 @@ function App() {
   const [geoStatus, setGeoStatus] = useState('idle')
   const [geoError, setGeoError] = useState(null)
   const [position, setPosition] = useState(null)
+  const [lastDbLocation, setLastDbLocation] = useState(null)
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError, setSaveError] = useState(null)
   const [tracking, setTracking] = useState(false)
@@ -39,6 +40,35 @@ function App() {
   const getAuthHeaders = useCallback(() => {
     return authToken ? { Authorization: `Bearer ${authToken}` } : {}
   }, [authToken])
+
+  const fetchLatestLocation = useCallback(() => {
+    if (!authUser) return
+    fetch(`${apiBase}/api/locations?limit=1`, {
+      credentials: 'include',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    })
+      .then(async (r) => {
+        if (r.status === 401) return null
+        if (!r.ok) {
+          const text = await r.text().catch(() => '')
+          throw new Error(`Failed to load latest location: HTTP ${r.status} ${r.statusText} ${text}`)
+        }
+        return r.json()
+      })
+      .then((data) => {
+        const row = Array.isArray(data?.data) && data.data.length ? data.data[0] : null
+        if (row && typeof row.lat === 'number' && typeof row.lng === 'number') {
+          setLastDbLocation(row)
+        } else {
+          setLastDbLocation(null)
+        }
+      })
+      .catch(() => {
+        // Non-fatal: keep map usable even if API is down
+      })
+  }, [apiBase, authUser, getAuthHeaders])
 
   const fetchMe = useCallback(() => {
     setAuthLoading(true)
@@ -158,7 +188,10 @@ function App() {
       setLoading(false)
       setDbData(null)
     }
-  }, [authUser, fetchData])
+
+    // Always load the most recent saved location for this logged-in user.
+    fetchLatestLocation()
+  }, [authUser, fetchData, fetchLatestLocation])
 
   const stopTracking = useCallback(() => {
     if (trackTimerRef.current) {
@@ -263,6 +296,7 @@ function App() {
           .then(() => {
             setSaveStatus('saved')
             setLastSavedAt(new Date())
+            fetchLatestLocation()
           })
           .catch((e) => {
             setSaveStatus('error')
@@ -290,7 +324,7 @@ function App() {
         maximumAge: 15000,
       },
     )
-  }, [apiBase, authToken, stopTracking])
+  }, [apiBase, authToken, fetchLatestLocation, stopTracking])
 
   const toggleTracking = useCallback(() => {
     if (tracking) {
@@ -310,9 +344,10 @@ function App() {
 
   const mapCenter = useMemo(() => {
     if (position) return [position.lat, position.lng]
+    if (lastDbLocation) return [lastDbLocation.lat, lastDbLocation.lng]
     // Default: Bucharest (nice fallback for first load)
     return [44.4268, 26.1025]
-  }, [position])
+  }, [position, lastDbLocation])
 
   const rows = Array.isArray(dbData?.data) ? dbData.data : []
   const columns = rows.length > 0 && rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []
@@ -443,6 +478,9 @@ function App() {
         {saveStatus === 'saved' && <p className="status">Saved location to database ✅</p>}
         {tracking && <p className="status">Tracking is ON (saves every 1 minute)</p>}
         {!tracking && lastSavedAt && <p className="muted">Last saved: {lastSavedAt.toLocaleString()}</p>}
+        {lastDbLocation?.recorded_at && !lastSavedAt && (
+          <p className="muted">Last DB location: {new Date(lastDbLocation.recorded_at).toLocaleString()}</p>
+        )}
 
         {position && (
           <p className="muted" style={{ marginBottom: 10 }}>
@@ -461,6 +499,22 @@ function App() {
                 <Popup>
                   You are here<br />
                   ({position.lat.toFixed(5)}, {position.lng.toFixed(5)})
+                </Popup>
+              </Marker>
+            )}
+
+            {lastDbLocation && (!position || lastDbLocation.lat !== position.lat || lastDbLocation.lng !== position.lng) && (
+              <Marker position={[lastDbLocation.lat, lastDbLocation.lng]}>
+                <Popup>
+                  Last saved (DB)
+                  <br />
+                  ({Number(lastDbLocation.lat).toFixed(5)}, {Number(lastDbLocation.lng).toFixed(5)})
+                  {lastDbLocation.recorded_at ? (
+                    <>
+                      <br />
+                      {new Date(lastDbLocation.recorded_at).toLocaleString()}
+                    </>
+                  ) : null}
                 </Popup>
               </Marker>
             )}
