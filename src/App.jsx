@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import './App.css'
@@ -24,6 +24,9 @@ function App() {
   const [position, setPosition] = useState(null)
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError, setSaveError] = useState(null)
+  const [tracking, setTracking] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState(null)
+  const trackTimerRef = useRef(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -52,7 +55,25 @@ function App() {
     fetchData()
   }, [fetchData])
 
-  const getCurrentLocation = useCallback(() => {
+  const stopTracking = useCallback(() => {
+    if (trackTimerRef.current) {
+      window.clearInterval(trackTimerRef.current)
+      trackTimerRef.current = null
+    }
+    setTracking(false)
+    setGeoStatus('idle')
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (trackTimerRef.current) {
+        window.clearInterval(trackTimerRef.current)
+        trackTimerRef.current = null
+      }
+    }
+  }, [])
+
+  const captureAndSaveLocation = useCallback(() => {
     setGeoError(null)
 
     if (!('geolocation' in navigator)) {
@@ -77,12 +98,6 @@ function App() {
       return
     }
 
-    const ok = window.confirm('Allow this app to use your current location?')
-    if (!ok) {
-      setGeoStatus('idle')
-      return
-    }
-
     setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -102,18 +117,6 @@ function App() {
 
         setPosition(nextPosition)
         setGeoStatus('ready')
-
-        const show = (value) => (value === null || value === undefined ? 'N/A' : value)
-        window.alert(
-          'Latitude: ' + show(nextPosition.lat) + '\n' +
-            'Longitude: ' + show(nextPosition.lng) + '\n' +
-            'Altitude: ' + show(nextPosition.altitude) + '\n' +
-            'Accuracy: ' + show(nextPosition.accuracy) + '\n' +
-            'Altitude Accuracy: ' + show(nextPosition.altitudeAccuracy) + '\n' +
-            'Heading: ' + show(nextPosition.heading) + '\n' +
-            'Speed: ' + show(nextPosition.speed) + '\n' +
-            'Timestamp: ' + show(nextPosition.timestamp) + '\n',
-        )
 
         // Save to DB
         setSaveStatus('saving')
@@ -140,6 +143,7 @@ function App() {
           })
           .then(() => {
             setSaveStatus('saved')
+            setLastSavedAt(new Date())
           })
           .catch((e) => {
             setSaveStatus('error')
@@ -158,6 +162,7 @@ function App() {
 
         if (err?.code === 1) {
           window.alert(message)
+          stopTracking()
         }
       },
       {
@@ -166,7 +171,23 @@ function App() {
         maximumAge: 15000,
       },
     )
-  }, [apiBase])
+  }, [apiBase, stopTracking])
+
+  const toggleTracking = useCallback(() => {
+    if (tracking) {
+      stopTracking()
+      return
+    }
+
+    const ok = window.confirm('Allow this app to use your current location every 1 minute and save it to the database?')
+    if (!ok) return
+
+    setTracking(true)
+    captureAndSaveLocation() // run immediately
+    trackTimerRef.current = window.setInterval(() => {
+      captureAndSaveLocation()
+    }, 60_000)
+  }, [tracking, captureAndSaveLocation, stopTracking])
 
   const mapCenter = useMemo(() => {
     if (position) return [position.lat, position.lng]
@@ -196,8 +217,12 @@ function App() {
         <div className="sectionHeader">
           <h2>Map</h2>
           <div className="actions">
-            <button className="btn" onClick={getCurrentLocation} disabled={geoStatus === 'loading'}>
-              {geoStatus === 'loading' ? 'Getting location…' : 'Use my location'}
+            <button className="btn" onClick={toggleTracking} disabled={geoStatus === 'loading'}>
+              {geoStatus === 'loading'
+                ? 'Getting location…'
+                : tracking
+                  ? 'Stop tracking'
+                  : 'Use my location'}
             </button>
           </div>
         </div>
@@ -208,6 +233,8 @@ function App() {
 
         {saveStatus === 'saving' && <p className="status">Saving location to database…</p>}
         {saveStatus === 'saved' && <p className="status">Saved location to database ✅</p>}
+        {tracking && <p className="status">Tracking is ON (saves every 1 minute)</p>}
+        {!tracking && lastSavedAt && <p className="muted">Last saved: {lastSavedAt.toLocaleString()}</p>}
 
         {position && (
           <p className="muted" style={{ marginBottom: 10 }}>
