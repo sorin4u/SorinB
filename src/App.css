@@ -2,6 +2,87 @@
   min-height: 100vh;
 }
 
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--bg) 82%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.navbarInner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px clamp(16px, 2vw, 28px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.navBrand {
+  color: var(--text);
+  font-weight: 850;
+  letter-spacing: 0.2px;
+  text-decoration: none;
+}
+
+.navBrand:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.navLink {
+  color: var(--muted);
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+
+.navLink:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  text-decoration: none;
+}
+
+.navRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navUser {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.btn.navBtn {
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+
 .page {
   max-width: 1100px;
   margin: 0 auto;
@@ -133,6 +214,29 @@
   background: color-mix(in oklab, var(--surface) 55%, transparent);
 }
 
+.adminActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.adminInput,
+.adminSelect {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-2) 70%, transparent);
+  color: var(--text);
+  outline: none;
+  min-width: 180px;
+}
+
+.adminInput:focus,
+.adminSelect:focus {
+  border-color: color-mix(in oklab, var(--brand) 55%, var(--border));
+}
+
 .mapWrap {
   height: clamp(260px, 40vh, 420px);
   border-radius: 12px;
@@ -178,6 +282,10 @@
 }
 
 @media (max-width: 640px) {
+  .navUser {
+    display: none;
+  }
+
   .pageHeader {
     flex-direction: column;
     align-items: stretch;

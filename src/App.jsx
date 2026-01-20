@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import './App.css'
+import Navbar from './components/Navbar.jsx'
+import Admin from './components/Admin.jsx'
 
 // Fix default marker icons under Vite/ESM
 delete L.Icon.Default.prototype._getIconUrl
@@ -33,9 +35,6 @@ function App() {
   const [password, setPassword] = useState('')
   const [authToken, setAuthToken] = useState(() => window.localStorage.getItem('sorinb_token') || '')
 
-  const [dbData, setDbData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const apiBase =
     import.meta.env.VITE_API_BASE_URL ||
     (window.location.protocol === 'file:' ? 'https://sorinb.onrender.com' : '')
@@ -122,7 +121,6 @@ function App() {
       .catch(() => {})
       .finally(() => {
         setAuthUser(null)
-        setDbData(null)
         setAuthToken('')
         window.localStorage.removeItem('sorinb_token')
       })
@@ -159,52 +157,15 @@ function App() {
     [apiBase, authMode, email, password],
   )
 
-  const fetchData = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    fetch(`${apiBase}/api/data`, {
-      credentials: 'include',
-      headers: {
-        ...getAuthHeaders(),
-      },
-    })
-      .then(async (response) => {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error('Not authorized (admin only).')
-        }
-        if (!response.ok) {
-          const text = await response.text().catch(() => '')
-          throw new Error(`HTTP ${response.status} ${response.statusText} ${text}`)
-        }
-        return response.json()
-      })
-      .then((data) => {
-        setDbData(data)
-        setLoading(false)
-      })
-      .catch((err) => {
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [apiBase, getAuthHeaders])
-
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchMe()
   }, [fetchMe])
 
   useEffect(() => {
-    if (authUser?.role === 'admin') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      fetchData()
-    } else {
-      setLoading(false)
-      setDbData(null)
-    }
-
     // Always load the most recent saved location for this logged-in user.
-    fetchLatestLocation()
-  }, [authUser, fetchData, fetchLatestLocation])
+    if (authUser) fetchLatestLocation()
+  }, [authUser, fetchLatestLocation])
 
   const stopTracking = useCallback(() => {
     if (trackTimerRef.current) {
@@ -362,93 +323,98 @@ function App() {
     return [44.4268, 26.1025]
   }, [position, lastDbLocation])
 
-  const rows = Array.isArray(dbData?.data) ? dbData.data : []
-  const columns = rows.length > 0 && rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []
-
   if (authLoading) {
     return (
-      <main className="page">
-        <section className="card">
-          <p className="status">Checking session…</p>
-        </section>
-      </main>
+      <>
+        <Navbar user={null} authMode={authMode} onSetAuthMode={setAuthMode} />
+        <main className="page" id="top">
+          <section className="card">
+            <p className="status">Checking session…</p>
+          </section>
+        </main>
+      </>
     )
   }
 
   if (!authUser) {
     return (
-      <main className="page">
-        <header className="pageHeader">
-          <div className="titleBlock">
-            <h1>SorinB</h1>
-            <p className="subtitle">Login required (user or admin)</p>
-          </div>
-        </header>
+      <>
+        <Navbar user={null} authMode={authMode} onSetAuthMode={setAuthMode} />
+        <main className="page" id="top">
+          <header className="pageHeader">
+            <div className="titleBlock">
+              <h1>SorinB</h1>
+              <p className="subtitle">Login required (user or admin)</p>
+            </div>
+          </header>
 
-        <section className="card">
-          {authError && <p className="status error">{authError}</p>}
+          <section className="card">
+            {authError && <p className="status error">{authError}</p>}
 
-          <div className="authTabs">
-            <button
-              className="btn"
-              onClick={() => setAuthMode('login')}
-              disabled={authMode === 'login'}
-              type="button"
-            >
-              Login
-            </button>
-            <button
-              className="btn"
-              onClick={() => setAuthMode('register')}
-              disabled={authMode === 'register'}
-              type="button"
-            >
-              Register
-            </button>
-          </div>
-
-          <form className="authForm" onSubmit={submitAuth}>
-            <label className="field">
-              <span>Email</span>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                autoComplete="email"
-                required
-              />
-            </label>
-
-            <label className="field">
-              <span>Password</span>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
-                minLength={8}
-                required
-              />
-            </label>
-
-            <div className="actions">
-              <button className="btn" type="submit">
-                {authMode === 'register' ? 'Create account' : 'Login'}
+            <div className="authTabs">
+              <button
+                className="btn"
+                onClick={() => setAuthMode('login')}
+                disabled={authMode === 'login'}
+                type="button"
+              >
+                Login
+              </button>
+              <button
+                className="btn"
+                onClick={() => setAuthMode('register')}
+                disabled={authMode === 'register'}
+                type="button"
+              >
+                Register
               </button>
             </div>
 
-            <p className="muted" style={{ marginTop: 10 }}>
-              Admin login: set server env vars <strong>ADMIN_EMAIL</strong> and <strong>ADMIN_PASSWORD</strong> once, then login.
-            </p>
-          </form>
-        </section>
-      </main>
+            <form className="authForm" onSubmit={submitAuth}>
+              <label className="field">
+                <span>Email</span>
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  autoComplete="email"
+                  required
+                />
+              </label>
+
+              <label className="field">
+                <span>Password</span>
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                  minLength={8}
+                  required
+                />
+              </label>
+
+              <div className="actions">
+                <button className="btn" type="submit">
+                  {authMode === 'register' ? 'Create account' : 'Login'}
+                </button>
+              </div>
+
+              <p className="muted" style={{ marginTop: 10 }}>
+                Admin login: set server env vars <strong>ADMIN_EMAIL</strong> and <strong>ADMIN_PASSWORD</strong> once, then login.
+              </p>
+            </form>
+          </section>
+        </main>
+      </>
     )
   }
 
   return (
-    <main className="page">
-      <header className="pageHeader">
+    <>
+      <Navbar user={authUser} onLogout={logout} />
+      <main className="page" id="top">
+        <header className="pageHeader">
         <div className="titleBlock">
           <h1>All Database Data</h1>
           <p className="subtitle">API base: {apiBase || '(same-origin)'}</p>
@@ -457,19 +423,10 @@ function App() {
           </p>
         </div>
 
-        <div className="actions">
-          {authUser.role === 'admin' && (
-            <button className="btn" onClick={fetchData}>
-              Refresh
-            </button>
-          )}
-          <button className="btn" onClick={logout}>
-            Logout
-          </button>
-        </div>
+        <div className="actions" />
       </header>
 
-      <section className="card" style={{ marginBottom: 14 }}>
+      <section className="card" id="map" style={{ marginBottom: 14 }}>
         <div className="sectionHeader">
           <h2>Map</h2>
           <div className="actions">
@@ -541,47 +498,12 @@ function App() {
       </section>
 
       {authUser.role === 'admin' && (
-        <section className="card">
-          {loading && <p className="status">Loading all data from database…</p>}
-          {error && <p className="status error">Error: {error}</p>}
-
-          {dbData && (
-            <>
-              <div className="sectionHeader">
-                <h2>Users (admin)</h2>
-                <p className="muted">Total rows: {rows.length}</p>
-              </div>
-
-              <div className="tableWrap" role="region" aria-label="Database table" tabIndex={0}>
-                <table className="dataTable">
-                  {columns.length > 0 && (
-                    <thead>
-                      <tr>
-                        {columns.map((key) => (
-                          <th key={key} scope="col">
-                            {key}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                  )}
-
-                  <tbody>
-                    {rows.map((row, rowIndex) => (
-                      <tr key={rowIndex}>
-                        {(columns.length ? columns : Object.keys(row)).map((colKey) => (
-                          <td key={colKey}>{row?.[colKey]}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+        <section className="card" id="admin">
+          <Admin apiBase={apiBase} authToken={authToken} />
         </section>
       )}
-    </main>
+      </main>
+    </>
   )
 }
 

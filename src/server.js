@@ -27,8 +27,8 @@ app.use(
   cors({
     origin: true,
     credentials: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 );
 // Express 5 no longer accepts "*" as a route pattern (path-to-regexp error).
@@ -298,6 +298,100 @@ app.get('/api/data', requireAuth, requireRole('admin'), async (req, res) => {
   } catch (err) {
     console.error('Error fetching data:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Admin: Users CRUD ---
+// List all users (safe fields only)
+app.get('/api/admin/users', requireAuth, requireRole('admin'), async (_req, res) => {
+  try {
+    await ensureSchema();
+    const result = await pool.query('SELECT id, email, role, created_at FROM users ORDER BY created_at DESC');
+    return res.json({ count: result.rows.length, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching admin users:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Update a user (email/role, optionally password)
+app.put('/api/admin/users/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    await ensureSchema();
+
+    const userId = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const emailRaw = req.body?.email;
+    const roleRaw = req.body?.role;
+    const passwordRaw = req.body?.password;
+
+    const sets = [];
+    const values = [userId];
+    let i = 2;
+
+    if (typeof emailRaw === 'string') {
+      const email = emailRaw.trim().toLowerCase();
+      if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email is required' });
+      sets.push(`email = $${i}`);
+      values.push(email);
+      i += 1;
+    }
+
+    if (typeof roleRaw === 'string') {
+      const role = roleRaw.trim();
+      if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: "Role must be 'user' or 'admin'" });
+      sets.push(`role = $${i}`);
+      values.push(role);
+      i += 1;
+    }
+
+    if (typeof passwordRaw === 'string' && passwordRaw.length > 0) {
+      if (passwordRaw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      const passwordHash = await bcrypt.hash(passwordRaw, 12);
+      sets.push(`password_hash = $${i}`);
+      values.push(passwordHash);
+      i += 1;
+    }
+
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    const updated = await pool.query(
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING id, email, role, created_at`,
+      values,
+    );
+    if (!updated.rows.length) return res.status(404).json({ error: 'User not found' });
+    return res.json({ ok: true, user: updated.rows[0] });
+  } catch (err) {
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+    console.error('Error updating user:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a user
+app.delete('/api/admin/users/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    await ensureSchema();
+    const userId = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) return res.status(400).json({ error: 'Invalid user id' });
+
+    // Avoid locking yourself out accidentally.
+    if (String(req.user?.id) === String(userId)) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+
+    const deleted = await pool.query(
+      'DELETE FROM users WHERE id = $1 RETURNING id, email, role, created_at',
+      [userId],
+    );
+    if (!deleted.rows.length) return res.status(404).json({ error: 'User not found' });
+    return res.json({ ok: true, user: deleted.rows[0] });
+  } catch (err) {
+    console.error('Error deleting user:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
